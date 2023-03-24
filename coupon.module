@@ -1,0 +1,331 @@
+<?php
+
+module_load_include('inc', 'coupon', 'includes/coupon.forms');
+
+define('COUPON_ACTIVE', 0);
+define('COUPON_USED', 1);
+
+/**
+ * Implements hook_menu().
+ */
+
+function coupon_menu()
+{
+  $items = array();
+
+  $items['admin/config/coupons'] = array(
+    'title' => 'Coupons list',
+    'page callback' => 'coupon_list',
+    'page arguments' => array(),
+    'access arguments' => array('create coupons, edit coupons, view coupons, use coupons'),
+    'type' => MENU_NORMAL_ITEM,
+    'weight' => 0,
+  );
+
+  $items['admin/config/coupons/edit/%'] = array(
+    'title' => 'Edit Coupon',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('coupon_edit_form', 4),
+    'access arguments' => array('edit coupons'),
+    'type' => MENU_CALLBACK,
+    'weight' => 1,
+  );
+
+  $items['admin/config/coupons/use/%'] = array(
+    'title' => 'Use Coupon',
+    'page callback' => 'coupon_use',
+    'page arguments' => array(4),
+    'access arguments' => array('use coupons'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['admin/config/coupons/activate/%'] = array(
+    'title' => 'Activate Coupon',
+    'page callback' => 'coupon_activate',
+    'page arguments' => array(4),
+    'access arguments' => array('use coupons'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['admin/config/coupons/create'] = array(
+    'title' => 'Coupon creation',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('coupon_form'),
+    'access arguments' => array('create coupons'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['admin/config/coupons/verify'] = array(
+    'title' => 'Check Coupon',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('coupon_verifications_form'),
+    'access arguments' => array('use coupons'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+function coupon_list()
+{
+  // сss
+  drupal_add_css(drupal_get_path('module', 'coupon') . '/coupon.css');
+
+  $header = array(
+    array('data' => t('Coupon ID'), 'field' => 'coupon_id', 'sort' => 'asc'),
+    array('data' => t('Coupon Code'), 'field' => 'coupon_code'),
+    array('data' => t('Discount Percentage'), 'field' => 'discount_percentage'),
+    array('data' => t('Description'), 'field' => 'description'),
+    array('data' => t('Status'), 'field' => 'status'),
+    array('data' => t('Operations')),
+  );
+
+  $query = db_select('coupon', 'c')
+    ->fields('c', array('coupon_id', 'coupon_code', 'discount_percentage', 'description', 'status'));
+
+  // Add search filter
+  $search_coupon_code = isset($_GET['search_coupon_code']) ? $_GET['search_coupon_code'] : '';
+  if (!empty($search_coupon_code)) {
+    // $query->condition('coupon_code', '%' . db_like($search_coupon_code) . '%', 'LIKE');  
+    // changed to exact match
+    $query->condition('coupon_code', $search_coupon_code, '=');
+  }
+
+  $table_sort = $query->extend('TableSort')->orderByHeader($header);
+  $pager = $table_sort->extend('PagerDefault')->limit(20);
+
+  $result = $pager->execute();
+
+  $rows = array();
+  foreach ($result as $coupon) {
+    $edit_link = l(t('Edit'), 'admin/config/coupons/edit/' . $coupon->coupon_id);
+    $use_link = l(t('Use'), 'admin/config/coupons/use/' . $coupon->coupon_id);
+    $activate_link = l(t('Activate'), 'admin/config/coupons/activate/' . $coupon->coupon_id);
+    $rows[] = array(
+      $coupon->coupon_id,
+      $coupon->coupon_code,
+      $coupon->discount_percentage . '%',
+      $coupon->description,
+      $coupon->status ? t('Used') : t('Active'),
+      $edit_link . ' | ' . $use_link . ' | ' . $activate_link,
+    );
+  }
+
+  $output = '<div class="coupon-search-form">';
+  $output .= '<form method="get">';
+  $output .= '<input type="text" name="search_coupon_code" value="' . check_plain($search_coupon_code) . '">';
+  $output .= '<input type="submit" value="' . t('Search') . '">';
+  $output .= '</form>';
+
+  $output .= '<form method="get">';
+  $output .= '<input type="submit" name="reset" value="' . t('Reset') . '">';
+  $output .= '</form>';
+
+  $output .= '</div>';
+
+  if (isset($_GET['reset'])) {
+    drupal_goto('admin/config/coupons');
+  }
+
+
+  $output .= theme('table', array('header' => $header, 'rows' => $rows));
+  $output .= theme('pager');
+
+  return $output;
+}
+
+function coupon_search_form_reset($form, &$form_state)
+{
+  $form_state['redirect'] = 'admin/config/coupons';
+}
+
+
+
+function coupon_use($coupon_id)
+{
+  // Update coupon status to used (1).
+  db_update('coupon')
+    ->fields(array('status' => COUPON_USED))
+    ->condition('coupon_id', $coupon_id)
+    ->execute();
+
+  drupal_set_message(t('Coupon with ID %coupon_id has been marked as used.', array('%coupon_id' => $coupon_id)));
+
+  drupal_goto('admin/config/coupons');
+}
+
+function coupon_activate($coupon_id)
+{
+  // Update coupon status to active (0).
+  db_update('coupon')
+    ->fields(array('status' => COUPON_ACTIVE))
+    ->condition('coupon_id', $coupon_id)
+    ->execute();
+
+  drupal_set_message(t('Coupon with ID %coupon_id has been marked as unused.', array('%coupon_id' => $coupon_id)));
+
+  drupal_goto('admin/config/coupons');
+}
+
+function coupon_verifications_form($form, &$form_state)
+{
+  $form['coupon_code'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Coupon Code'),
+    '#required' => TRUE,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Verify Coupon'),
+  );
+
+  // Add an additional button to use the coupon.
+  if (isset($form_state['coupon']) && $form_state['coupon']->status == COUPON_ACTIVE) {
+    $form['use_coupon'] = array(
+      '#type' => 'submit',
+      '#value' => t('Use Coupon'),
+      '#submit' => array('coupon_verifications_use_coupon_submit'),
+    );
+  }
+
+  return $form;
+}
+
+function coupon_verifications_form_submit($form, &$form_state)
+{
+  $coupon_code = $form_state['values']['coupon_code'];
+  // checking the validity of the coupon code
+  $coupon = coupon_load_by_codes($coupon_code);
+  if (!$coupon) {
+    drupal_set_message(t('Invalid coupon code'), 'error');
+    return;
+  }
+  // coupon status check
+  if ($coupon->status != COUPON_ACTIVE) {
+    drupal_set_message(t('This coupon is not currently valid'), 'error');
+    return;
+  }
+
+  // Store the coupon in the form state for later use.
+  $form_state['coupon'] = $coupon;
+
+  // discount percentage display
+  $discount_percentage = $coupon->discount_percentage;
+  drupal_set_message(t('Discount percentage: @percentage%', array('@percentage' => $discount_percentage)));
+  drupal_set_message(t('Coupon status is unused'));
+
+  // Change the form to display a button to use the coupon.
+  $form_state['rebuild'] = TRUE;
+}
+
+function coupon_verifications_use_coupon_submit($form, &$form_state)
+{
+  $coupon = $form_state['coupon'];
+  $coupon_code = $coupon->coupon_code;
+  // Change the status of the coupon to used.
+  $coupon->status = COUPON_USED;
+  coupon_save($coupon);
+
+  // Display a message indicating that the coupon has been used.
+  drupal_set_message(t('Coupon with code %coupon_code has been marked as used.', array('%coupon_code' => $coupon_code)));
+
+  // Clear the coupon from the form state and rebuild the form.
+  unset($form_state['coupon']);
+  $form_state['rebuild'] = TRUE;
+  drupal_goto('admin/config/coupons/verify');
+}
+
+// Custom validation function for discount_percentage field.
+function coupon_validate_discount_percentage($element, &$form_state)
+{
+  $discount_percentage = $element['#value'];
+  if (!is_numeric($discount_percentage)) {
+    form_error($element, t('Discount percentage must be a numeric value.'));
+  } else if ($discount_percentage > 100) {
+    form_error($element, t('Discount percentage cannot be greater than 100.'));
+  }
+}
+
+function coupon_load_by_codes($coupon_code)
+{
+  $query = db_select('coupon', 'c')
+    ->fields('c')
+    ->condition('c.coupon_code', $coupon_code)
+    ->execute();
+  $result = $query->fetchObject();
+  if (!$result) {
+    return FALSE;
+  }
+  return $result;
+}
+
+function coupon_save($coupon)
+{
+  $query = db_update('coupon')
+    ->fields(array(
+      'status' => $coupon->status,
+    ))
+    ->condition('coupon_id', $coupon->coupon_id)
+    ->execute();
+}
+
+function coupon_load_by_code($coupon_code)
+{
+  $coupon = db_select('coupon', 'c')
+    ->fields('c')
+    ->condition('coupon_code', $coupon_code)
+    ->execute()
+    ->fetchObject();
+
+  return $coupon;
+}
+
+function coupon_generate_code()
+{
+  $coupon_code = '';
+
+  // Generate a unique coupon code
+  do {
+    $coupon_code = strtoupper(substr(md5(uniqid(rand(), true)), 0, 8));
+    $query = db_select('coupon', 'c')
+      ->fields('c', array('coupon_id'))
+      ->condition('c.coupon_code', $coupon_code, '=')
+      ->execute();
+  } while ($query->fetchField());
+
+  return $coupon_code;
+}
+
+function coupon_load($coupon_id)
+{
+  $coupon = db_select('coupon', 'c')
+    ->fields('c')
+    ->condition('c.coupon_id', $coupon_id)
+    ->execute()
+    ->fetchObject('stdClass');
+
+  // debugging
+  // drupal_set_message('Coupon ID: ' . $coupon->coupon_id);
+  // drupal_set_message('Coupon Code: ' . $coupon->coupon_code);
+  // drupal_set_message('Discount Percentage: ' . $coupon->discount_percentage);
+  // drupal_set_message('Description: ' . $coupon->description);
+  // drupal_set_message('Status: ' . $coupon->status);
+
+  return $coupon;
+}
+
+/**
+ * Implements hook_help().
+ */
+
+function coupons_help($path, $arg)
+{
+  switch ($path) {
+    case 'admin/help#coupons':
+      return '<p>' . t('This module allows you to manage discount coupons for your site.') . '</p>';
+    case 'admin/help/coupons':
+      return '<p>' . t('To manage coupons, go to the coupons list page and click on the "Add Coupon" button to create a new coupon. You can edit or delete existing coupons from the list as well. To view the usage statistics of a coupon, click on its code in the list.') . '</p>';
+  }
+}
+
+module_load_include('inc', 'coupon', 'includes/coupon.permissions');

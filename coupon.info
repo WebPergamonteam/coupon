@@ -1,0 +1,8 @@
+name = coupon
+description = Custom Drupal module for managing discount coupons
+package = Custom
+core = 7.x
+
+dependencies[] = entity
+dependencies[] = field
+dependencies[] = views

@@ -1,0 +1,66 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function coupon_schema() {
+  $schema['coupon'] = array(
+    'description' => 'The base table for coupons.',
+    'fields' => array(
+      'coupon_id' => array(
+        'description' => 'The primary identifier for a coupon entity.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'coupon_code' => array(
+        'description' => 'The coupon code for a coupon entity.',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+      ),
+      'discount_percentage' => array(
+        'description' => 'The discount percentage for a coupon entity.',
+        'type' => 'numeric',
+        'precision' => 5,
+        'scale' => 2,
+        'not null' => TRUE,
+      ),
+      'description' => array(
+        'description' => 'The description of a coupon entity.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+      'status' => array(
+        'description' => 'The status of a coupon entity.',
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('coupon_id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function coupon_install() {
+  // Create the necessary database table.
+  drupal_install_schema('coupon');
+
+  // Clear the cache.
+  cache_clear_all();
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function coupon_uninstall() {
+  // Drop the custom database table.
+  drupal_uninstall_schema('coupon');
+
+  // Clear the cache.
+  cache_clear_all();
+}
